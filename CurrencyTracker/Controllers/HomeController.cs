@@ -3,8 +3,10 @@ using CurrencyTracker.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Diagnostics;
 using System.Xml.Linq;
+using CurrencyTracker.Services;
 
 namespace CurrencyTracker.Controllers
 {
@@ -21,9 +23,11 @@ namespace CurrencyTracker.Controllers
         public async Task<IActionResult> Index()
         {
 
-            (decimal exchangeRateVenta, decimal exchangeRateCompra) = ApiHacienda();
+            (decimal exchangeRateVenta, decimal exchangeRateCompra) = Hacienda.ApiHacienda();
             ViewBag.VentaToday = exchangeRateVenta;
             ViewBag.CompraToday = exchangeRateCompra;
+
+
             if (TempData.ContainsKey("AlertMessage"))
             {
                 ViewBag.AlertMessage = TempData["AlertMessage"];
@@ -31,73 +35,111 @@ namespace CurrencyTracker.Controllers
 
             var arrayventa = _context.Rates
                  .Select(r => r.CrVenta)
+                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
                  .ToList();
-            ViewBag.Array = arrayventa;
+            ViewBag.ArrayVenta = arrayventa;
+            var arraycompra = _context.Rates
+                 .Select(r => r.CrCompra)
+                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
+                 .ToList();
+            ViewBag.ArrayCompra = arraycompra;
 
             var arrayday = _context.Rates
                  .Select(r => r.Date.DayOfWeek.ToString())
+                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
                  .ToList();
             ViewBag.DayOfWeek = arrayday;
+
+            Variance();
 
             return View(await _context.Rates.ToListAsync());
         }
 
 
-
-
-        public static (decimal, decimal) ApiHacienda()
+        public IActionResult Variance()
         {
-            HttpClient client = new HttpClient();
-            string apiUrl = "https://api.hacienda.go.cr/indicadores/tc/dolar?fbclid=IwAR0zWDoToLXrNWsH0d7kG184c-hGT9FwpgWwzI0F22bpJbKzLSJ7KyqRu0c";
-            var response = client.GetAsync(apiUrl).Result;
-            var jsonData = response.Content.ReadAsStringAsync().Result;
+            var yesterdaysDate = DateTime.Now.Date.AddDays(-1);
+            var todaysDate = DateTime.Now.Date;
 
-            dynamic jsonObject = Newtonsoft.Json.JsonConvert.DeserializeObject(jsonData);
-            var exchangeRateVenta = (decimal)jsonObject.venta.valor;
-            var exchangeRateCompra = (decimal)jsonObject.compra.valor;
 
-            return (exchangeRateVenta, exchangeRateCompra);
-        }
+            var yesterdaysCompra = _context.Rates
+                             .Where(r => r.Date == yesterdaysDate)
+                             .Select(r => new { r.CrCompra });
 
-        public IActionResult Create()
-        {
+            decimal yesterdaysBuy = yesterdaysCompra.FirstOrDefault()?.CrCompra ?? 0;
 
-            (decimal exchangeRateVenta, decimal exchangeRateCompra) = ApiHacienda();
 
-            var targetDate = DateTime.Now.Date;
+            var todaysCompra = _context.Rates
+                           .Where(r => r.Date == todaysDate)
+                           .Select(r => new { r.CrCompra });
+            decimal todaysBuy = todaysCompra.FirstOrDefault()?.CrCompra ?? 0;
 
-            var presentDate = _context.Rates
-                .Where(r => r.Date == targetDate)
-                .ToList();
-            if (presentDate.Count == 1)
+            if (todaysBuy == 0)
 
             {
-                TempData["AlertMessage"] = "A rate for today already exists.";
-
-                return RedirectToAction(nameof(Index));
+                ViewBag.BuyPercentage = 'a';
 
             }
-            else {
-                var newRate = new Rates
+            else
+            {
+
+
+                try
                 {
-                    Date = DateTime.Now,
-                    USD = 1,
-                    CrVenta = exchangeRateVenta,
-                    CrCompra = exchangeRateCompra
+                    var percentageCompra = ((todaysBuy / yesterdaysBuy) * 100) - 100;
+                    var percentagefinalCompra = (decimal)Math.Round(percentageCompra, 2);
+                    ViewBag.BuyPercentage = percentagefinalCompra;
+                }
+                catch (DivideByZeroException ex)
+                {
 
-
-                };
-
-
-                _context.Rates.Add(newRate);
-                _context.SaveChanges();
-                return RedirectToAction(nameof(Index));
+                    var percentageCompra = 0;
+                    ViewBag.BuyPercentage = 0;
+                }
 
             }
 
+            var yesterdaysVenta = _context.Rates
+                                 .Where(r => r.Date == yesterdaysDate)
+                                 .Select(r => new { r.CrVenta });
+
+            decimal yesterdaysSell = yesterdaysVenta.FirstOrDefault()?.CrVenta ?? 0;
+
+
+            var todaysVenta = _context.Rates
+                           .Where(r => r.Date == todaysDate)
+                           .Select(r => new { r.CrVenta });
+
+            decimal todaysSell = todaysVenta.FirstOrDefault()?.CrVenta ?? 0;
+
+            if (todaysSell == 0)
+
+            {
+                ViewBag.SellPercentage = 'a';
+
+            }
+            else
+            {
+
+                try
+                {
+                    var percentageVenta = ((todaysSell / yesterdaysSell) * 100) - 100;
+
+                    var percentagefinalVenta = (decimal)Math.Round(percentageVenta, 2);
+                    ViewBag.SellPercentage = percentagefinalVenta;
+                }
+                catch (DivideByZeroException ex)
+                {
+
+                    var percentageCompra = 0;
+                    ViewBag.SellPercentage = 0;
+                }
+            }
+
+
+            return RedirectToAction(nameof(Index));
 
         }
-
 
 
 
