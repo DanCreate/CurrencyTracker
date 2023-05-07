@@ -34,19 +34,27 @@ namespace CurrencyTracker.Controllers
             }
 
             var arrayventa = _context.Rates
+                 .OrderByDescending(r => r.Date)
                  .Select(r => r.CrVenta)
-                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
+                 .Take(7)
+                 .Reverse()
                  .ToList();
+                 
+                 
             ViewBag.ArrayVenta = arrayventa;
             var arraycompra = _context.Rates
+                .OrderByDescending(r => r.Date)
                  .Select(r => r.CrCompra)
-                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
+                 .Take(7)
+                 .Reverse()
                  .ToList();
             ViewBag.ArrayCompra = arraycompra;
 
             var arrayday = _context.Rates
+                 .OrderByDescending(r => r.Date)
                  .Select(r => r.Date.DayOfWeek.ToString())
-                 .Skip(Math.Max(0, _context.Rates.Count() % 7))
+                 .Take(7)
+                 .Reverse()
                  .ToList();
             ViewBag.DayOfWeek = arrayday;
 
